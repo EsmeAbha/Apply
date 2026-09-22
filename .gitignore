@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.db
+*.db-journal
+server/storage/
+.env
+extension/dist/
+coverage/
+*.log
+test-storage/

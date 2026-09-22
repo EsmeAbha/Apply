@@ -1,0 +1,504 @@
+// PhD Application Intelligence Assistant — data model
+// SQLite for the MVP. Switch `provider` to "postgresql" for production;
+// string-typed enums are used so the schema is portable across providers.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── Identity ───────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String // scrypt hash — plaintext passwords are never stored or logged
+  createdAt    DateTime @default(now())
+
+  sessions          Session[]
+  profile           Profile?
+  researchInterests ResearchInterest[]
+  profileItems      ProfileItem[]
+  documents         Document[]
+  opportunities     Opportunity[]
+  applications      Application[]
+  generatedDocs     GeneratedDocument[]
+  emailDrafts       EmailDraft[]
+  tasks             Task[]
+  notifications     Notification[]
+  seeds             DiscoverySeed[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique // sha256 of the bearer token; raw token only lives client-side
+  label      String? // "web" | "extension"
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  lastUsedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────── Master profile ───────────────────────────
+
+model Profile {
+  id                     String    @id @default(cuid())
+  userId                 String    @unique
+  fullName               String?
+  contactEmail           String?
+  phone                  String?
+  address                String?
+  nationality            String? // only ever user-entered, never inferred
+  dateOfBirth            String? // user-entered; treated as sensitive in form assistance
+  timezone               String    @default("UTC")
+  currentDegree          String? // e.g. "Master's in Intelligent Systems"
+  field                  String? // e.g. "Computer Science and Engineering"
+  summary                String?
+  skills                 Json      @default("[]") // string[]
+  programmingLanguages   Json      @default("[]") // string[]
+  languages              Json      @default("[]") // {language, level}[]
+  englishMediumEducation String    @default("UNKNOWN") // YES | NO | UNKNOWN — user-declared
+  englishMediumEvidence  String? // note / document reference
+  ieltsStatus            String    @default("NOT_TAKEN") // NOT_TAKEN | PLANNED | BOOKED | TAKEN | SCORE_RECEIVED
+  ieltsTestDate          String?
+  ieltsScores            Json? // {overall, listening, reading, writing, speaking}
+  otherTests             Json      @default("[]") // {test, score, date}[]
+  preferredCountries     Json      @default("[]")
+  notificationPrefs      Json? // {inApp, browser, email, thresholds[]} — defaults applied in code
+  masterSop              String? // master Statement of Purpose text
+  masterCoverLetter      String?
+  updatedAt              DateTime  @updatedAt
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  education              Education[]
+}
+
+model Education {
+  id                  String   @id @default(cuid())
+  profileId           String
+  degree              String // "BSc", "MSc", ...
+  field               String?
+  institution         String
+  country             String?
+  startDate           String?
+  endDate             String? // or "Expected 2027"
+  status              String   @default("COMPLETED") // COMPLETED | IN_PROGRESS
+  grade               String?
+  thesisTitle         String?
+  mediumOfInstruction String? // user-declared, e.g. "English"
+  verified            Boolean  @default(true) // false when proposed from CV parsing and not yet confirmed
+  sortOrder           Int      @default(0)
+  profile             Profile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model ResearchInterest {
+  id       String @id @default(cuid())
+  userId   String
+  name     String
+  priority Int    @default(0)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+}
+
+// Publications, projects, experience, awards, certifications, teaching, references.
+model ProfileItem {
+  id               String   @id @default(cuid())
+  userId           String
+  kind             String // PUBLICATION | PROJECT | RESEARCH_EXPERIENCE | WORK_EXPERIENCE | TEACHING | AWARD | CERTIFICATION | REFERENCE
+  title            String
+  organization     String?
+  startDate        String?
+  endDate          String?
+  description      String?
+  url              String?
+  details          Json?     
+  verified         Boolean  @default(true) // CV-extracted items start unverified until the user confirms
+  sourceDocumentId String?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────── Document vault ───────────────────────────
+
+model Document {
+  id              String            @id @default(cuid())
+  userId          String
+  name            String
+  type            String // CV | PASSPORT | TRANSCRIPT | CERTIFICATE | DEGREE | PUBLICATION | THESIS | SOP | COVER_LETTER | RESEARCH_PROPOSAL | RECOMMENDATION | ENGLISH_TEST | ENGLISH_MEDIUM_CERT | OTHER
+  language        String?
+  relevantProgram String?
+  status          String            @default("READY") // DRAFT | READY | NEEDS_UPDATE | ARCHIVED
+  sensitive       Boolean           @default(false)
+  notes           String?
+  documentDate    String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions        DocumentVersion[]
+}
+
+model DocumentVersion {
+  id             String   @id @default(cuid())
+  documentId     String
+  versionNumber  Int
+  label          String // e.g. CV_v2, CV_PhD_NLP_v1
+  originalName   String
+  mimeType       String
+  sizeBytes      Int
+  sha256         String
+  storagePath    String // AES-256-GCM encrypted blob on disk
+  extractedText  String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  applicationUse ApplicationDocument[]
+
+  @@unique([documentId, versionNumber])
+}
+
+// ─────────────────────────── Opportunities ───────────────────────────
+
+model University {
+  id            String        @id @default(cuid())
+  name          String
+  country       String?
+  domain        String? // registrable domain used for official-source detection
+  website       String?
+  createdAt     DateTime      @default(now())
+  programs      Program[]
+  opportunities Opportunity[]
+  supervisors   Supervisor[]
+
+  @@unique([name, country])
+}
+
+model Program {
+  id            String        @id @default(cuid())
+  universityId  String
+  name          String
+  department    String?
+  degreeType    String        @default("PHD")
+  university    University    @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  opportunities Opportunity[]
+
+  @@unique([universityId, name])
+}
+
+model Opportunity {
+  id                 String    @id @default(cuid())
+  userId             String
+  universityId       String?
+  programId          String?
+  title              String
+  positionType       String    @default("UNKNOWN") // PHD_POSITION | PHD_PROGRAM | SCHOLARSHIP | FELLOWSHIP | UNKNOWN
+  universityName     String?
+  department         String?
+  country            String?
+  city               String?
+  researchAreas      Json      @default("[]")
+  summary            String?
+  officialUrl        String
+  normalizedUrl      String
+  applyUrl           String?
+  sourceType         String // OFFICIAL_UNIVERSITY | INSTITUTIONAL_PORTAL | GOVERNMENT | THIRD_PARTY | UNKNOWN | USER_ENTERED
+  status             String    @default("UNKNOWN") // OPEN | OPENING_SOON | DEADLINE_APPROACHING | CLOSED | UNKNOWN
+  fundingCategory    String    @default("FUNDING_UNKNOWN")
+  feeStatus          String    @default("UNKNOWN") // FREE | FEE_REQUIRED | FEE_WAIVER_AVAILABLE | UNKNOWN
+  feeAmount          Float?
+  feeCurrency        String?
+  englishStatus      String    @default("UNKNOWN")
+  verificationStatus String    @default("NEEDS_VERIFICATION") // VERIFIED | NEEDS_VERIFICATION | CONFLICTING
+  supervisorRequired String    @default("UNKNOWN") // YES | NO | UNKNOWN
+  primaryDeadline    DateTime? // earliest upcoming APPLICATION deadline (denormalised for sorting)
+  saved              Boolean   @default(false)
+  shortlisted        Boolean   @default(false)
+  archived           Boolean   @default(false)
+  isDemo             Boolean   @default(false)
+  discoveredVia      String    @default("MANUAL") // MANUAL | EXTENSION | CRAWLER | SEARCH | DEMO
+  contentHash        String?
+  extraction         Json // accepted, evidence-backed ExtractionResult (single source of truth)
+  lastVerifiedAt     DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  university   University?   @relation(fields: [universityId], references: [id])
+  program      Program?      @relation(fields: [programId], references: [id])
+  funding      Funding?
+  deadlines    Deadline[]
+  requirements Requirement[]
+  sources      Source[]
+  changes      ChangeLog[]
+  supervisors  Supervisor[]
+  applications Application[]
+  generated    GeneratedDocument[]
+  emailDrafts  EmailDraft[]
+  tasks        Task[]
+  notifications Notification[]
+
+  @@unique([userId, normalizedUrl])
+  @@index([userId, primaryDeadline])
+}
+
+model Funding {
+  id              String      @id @default(cuid())
+  opportunityId   String      @unique
+  category        String // FULLY_FUNDED | PARTIALLY_FUNDED | SALARIED_POSITION | SCHOLARSHIP_AVAILABLE | FUNDING_COMPETITIVE | SELF_FUNDED | FUNDING_UNKNOWN
+  tuition         String      @default("UNKNOWN") // COVERED | PARTIAL | NOT_COVERED | UNKNOWN
+  stipendAmount   Float?
+  stipendCurrency String?
+  stipendPeriod   String? // MONTH | YEAR
+  stipendText     String?
+  salaryText      String?
+  duration        String?
+  benefits        Json        @default("[]") // {benefit, snippet}[] — only explicitly stated benefits
+  fundingSource   String?
+  guaranteed      String      @default("UNKNOWN") // GUARANTEED | COMPETITIVE | UNKNOWN
+  positions       Int?
+  evidence        Json        @default("[]")
+  confidence      String      @default("LOW")
+  opportunity     Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+}
+
+model Deadline {
+  id            String      @id @default(cuid())
+  opportunityId String
+  kind          String // APPLICATION | FUNDING | SCHOLARSHIP | DEPARTMENT | SUPERVISOR_CONTACT | OPENING | OTHER
+  date          DateTime?
+  dateText      String
+  time          String?
+  timezone      String?
+  round         String?
+  rolling       Boolean     @default(false)
+  yearInferred  Boolean     @default(false)
+  certainty     String // VERIFIED | LIKELY | POSSIBLE | CONFLICTING | USER_ENTERED
+  confidence    String
+  snippet       String
+  sourceUrl     String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([date])
+}
+
+model Requirement {
+  id            String      @id @default(cuid())
+  opportunityId String
+  category      String // DOCUMENT | ENGLISH | FEE | DEGREE | OTHER
+  key           String // e.g. CV, SOP, IELTS, RECOMMENDATION_LETTERS
+  label         String
+  necessity     String // REQUIRED | OPTIONAL | CONDITIONAL | UNKNOWN
+  stage         String? // APPLICATION | AFTER_ADMISSION | BEFORE_ENROLMENT | UNKNOWN
+  details       Json?         // format, maxPages, maxSizeMb, count, scores...
+  instructions  String?
+  certainty     String
+  confidence    String
+  snippet       String
+  sourceUrl     String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+}
+
+model Source {
+  id             String        @id @default(cuid())
+  opportunityId  String?
+  url            String
+  title          String?
+  sourceType     String
+  accessedAt     DateTime      @default(now())
+  lastVerifiedAt DateTime      @default(now())
+  contentHash    String?
+  opportunity    Opportunity?  @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  crawlResults   CrawlResult[]
+}
+
+model CrawlResult {
+  id          String   @id @default(cuid())
+  sourceId    String?
+  url         String
+  status      String // OK | FAILED | BLOCKED_BY_ROBOTS | NOT_HTML | SKIPPED
+  httpStatus  Int?
+  error       String?
+  contentHash String?
+  title       String?
+  extracted   Json?
+  isCandidate Boolean  @default(false)
+  jobId       String?
+  fetchedAt   DateTime @default(now())
+  source      Source?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+}
+
+model ChangeLog {
+  id            String      @id @default(cuid())
+  opportunityId String
+  field         String
+  label         String
+  oldValue      String?
+  newValue      String?
+  sourceUrl     String
+  snippet       String?
+  status        String      @default("PENDING") // PENDING | ACCEPTED | DISMISSED
+  detectedAt    DateTime    @default(now())
+  resolvedAt    DateTime?
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+}
+
+model Supervisor {
+  id             String       @id @default(cuid())
+  opportunityId  String?
+  universityId   String?
+  name           String
+  title          String?
+  department     String?
+  email          String? // only when publicly listed on the official page for academic contact
+  researchAreas  Json         @default("[]")
+  labName        String?
+  profileUrl     String?
+  sourceUrl      String
+  snippet        String?
+  relevance      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  university     University?  @relation(fields: [universityId], references: [id])
+  emailDrafts    EmailDraft[]
+}
+
+// ─────────────────────────── Applications ───────────────────────────
+
+model Application {
+  id                 String    @id @default(cuid())
+  userId             String
+  opportunityId      String
+  stage              String    @default("DISCOVERED") // DISCOVERED | SHORTLISTED | REQUIREMENTS_VERIFIED | DOCUMENTS_PREPARING | READY_TO_APPLY | APPLICATION_STARTED | AWAITING_USER_REVIEW | SUBMITTED | INTERVIEW | DECISION
+  decision           String? // ACCEPTED | REJECTED | WAITLISTED | WITHDRAWN
+  checklist          Json?       // apply-now checklist item -> {done, at, note}
+  notes              String?
+  portalUrl          String?
+  portalUsername     String? // portal passwords are intentionally never stored
+  submittedAt        DateTime? // only set by an explicit user confirmation
+  submissionConfirmation String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity        Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  documents          ApplicationDocument[]
+  generated          GeneratedDocument[]
+  tasks              Task[]
+
+  @@unique([userId, opportunityId])
+}
+
+model ApplicationDocument {
+  id                  String           @id @default(cuid())
+  applicationId       String
+  requirementKey      String
+  label               String
+  necessity           String           @default("REQUIRED")
+  status              String           @default("MISSING") // MISSING | DRAFT | CUSTOMIZED | READY | PENDING | NOT_REQUIRED
+  documentVersionId   String?
+  generatedDocumentId String?
+  count               Int? // e.g. recommendation letters required
+  countReady          Int?
+  notes               String?
+  application         Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  documentVersion     DocumentVersion? @relation(fields: [documentVersionId], references: [id], onDelete: SetNull)
+
+  @@unique([applicationId, requirementKey])
+}
+
+model GeneratedDocument {
+  id            String       @id @default(cuid())
+  userId        String
+  opportunityId String?
+  applicationId String?
+  kind          String // SOP | COVER_LETTER | RESEARCH_PROPOSAL
+  tone          String?
+  title         String
+  content       String
+  baseContent   String? // master version used as the base (for comparison)
+  changes       Json         @default("[]") // {section, original, customized, reason}[]
+  warnings      Json         @default("[]") // fabrication-check findings
+  provider      String // TEMPLATE | anthropic:<model>
+  status        String       @default("DRAFT") // DRAFT | APPROVED
+  version       Int          @default(1)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+}
+
+model EmailDraft {
+  id            String       @id @default(cuid())
+  userId        String
+  opportunityId String?
+  supervisorId  String?
+  purpose       String // INITIAL_CONTACT | AVAILABILITY | FUNDING | RESEARCH_INTEREST | FOLLOW_UP | CLARIFICATION
+  to            String?
+  subject       String
+  body          String
+  warnings      Json         @default("[]")
+  status        String       @default("DRAFT") // DRAFT | APPROVED | MARKED_SENT (the app never sends supervisor emails)
+  provider      String       @default("TEMPLATE")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  supervisor    Supervisor?  @relation(fields: [supervisorId], references: [id], onDelete: SetNull)
+}
+
+model Task {
+  id            String       @id @default(cuid())
+  userId        String
+  applicationId String?
+  opportunityId String?
+  title         String
+  notes         String?
+  dueDate       DateTime?
+  done          Boolean      @default(false)
+  kind          String       @default("MANUAL") // MANUAL | AUTO
+  autoKey       String? // dedupe key for auto-generated tasks
+  createdAt     DateTime     @default(now())
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, autoKey])
+}
+
+model Notification {
+  id            String       @id @default(cuid())
+  userId        String
+  opportunityId String?
+  type          String // NEW_MATCH | DEADLINE | MISSING_DOCUMENT | IELTS_VERIFY | CHANGE_DETECTED | CRAWL_FAILED | SYSTEM
+  severity      String       @default("INFO") // INFO | WARNING | CRITICAL
+  title         String
+  body          String
+  link          String?
+  dedupeKey     String
+  readAt        DateTime?
+  emailedAt     DateTime?
+  createdAt     DateTime     @default(now())
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+}
+
+model DiscoverySeed {
+  id            String    @id @default(cuid())
+  userId        String
+  url           String
+  label         String?
+  kind          String    @default("PAGE") // PAGE | FEED
+  enabled       Boolean   @default(true)
+  lastCrawledAt DateTime?
+  lastStatus    String?
+  createdAt     DateTime  @default(now())
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, url])
+}
