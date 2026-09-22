@@ -20,14 +20,13 @@ export function createApp() {
   app.set("trust proxy", "loopback");
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: "same-site" } }));
   app.use(
-    cors({
-      origin(origin, cb) {
-        // Same-origin requests, the dashboard origin(s) and the browser extension are allowed.
-        if (!origin || config.corsOrigins.includes(origin) || origin.startsWith("chrome-extension://")) return cb(null, true);
-        cb(new Error("Origin not allowed by CORS"));
-      },
-      allowedHeaders: ["Content-Type", "Authorization"],
-      exposedHeaders: ["Content-Disposition"],
+    cors((req, cb) => {
+      // Same-origin requests, the configured dashboard origin(s) and the browser extension are allowed;
+      // anything else simply gets no CORS headers (the browser then blocks it).
+      const origin = req.headers.origin;
+      const self = `${req.protocol}://${req.headers.host}`;
+      const allowed = !origin || origin === self || config.corsOrigins.includes(origin) || origin.startsWith("chrome-extension://");
+      cb(null, { origin: allowed, allowedHeaders: ["Content-Type", "Authorization"], exposedHeaders: ["Content-Disposition"] });
     }),
   );
   app.use(express.json({ limit: "8mb" }));

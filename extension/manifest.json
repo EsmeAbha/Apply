@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "PhD Application Intelligence Assistant",
+  "short_name": "PhD Assistant",
+  "version": "0.1.0",
+  "description": "Analyse PhD opportunity pages, verify deadlines/funding/fees/IELTS from official sources, and review application forms — never auto-submits.",
+  "action": { "default_popup": "popup.html", "default_title": "PhD Assistant", "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png" } },
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "options_page": "options.html",
+  "permissions": ["activeTab", "scripting", "storage", "alarms", "notifications"],
+  "minimum_chrome_version": "114"
+}
