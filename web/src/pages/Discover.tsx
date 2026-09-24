@@ -214,7 +214,41 @@ function Browser() {
 }
 
 interface Seed { id: string; url: string; label: string | null; enabled: boolean; lastCrawledAt: string | null; lastStatus: string | null }
-interface Job { id: string; status: string; pagesFetched: number; candidates: number; found: { id: string; title: string; url: string; isNew: boolean; alignment: string }[]; leads: { url: string; title: string; reason: string }[]; errors: { url: string; reason: string }[] }
+interface Job {
+  id: string;
+  status: string;
+  pagesFetched: number;
+  candidates: number;
+  found: {
+    id: string;
+    title: string;
+    url: string;
+    isNew: boolean;
+    alignment: string;
+    university: string | null;
+    country: string | null;
+    funding: string;
+    deadline: string;
+    fee: string;
+    english: string;
+    documents: number;
+    applyUrl: string | null;
+  }[];
+  leads: { url: string; title: string; reason: string }[];
+  errors: { url: string; reason: string }[];
+}
+interface SearchCriteria { area: string; country: string; funding: string; programme: string; deadline: string }
+
+function buildSearchQuery(criteria: SearchCriteria): string {
+  const terms = ["PhD", "doctoral"];
+  if (criteria.area.trim()) terms.push(criteria.area.trim());
+  if (criteria.country.trim()) terms.push(criteria.country.trim());
+  if (criteria.funding) terms.push(criteria.funding);
+  if (criteria.programme) terms.push(criteria.programme);
+  if (criteria.deadline) terms.push(criteria.deadline);
+  terms.push("application");
+  return terms.join(" ");
+}
 
 function Crawler() {
   const seeds = useLoad(() => api.get<{ items: Seed[] }>("/seeds"));
@@ -222,7 +256,7 @@ function Crawler() {
   const status = useLoad(() => api.get<{ search: { enabled: boolean } }>("/settings/status"));
   const [url, setUrl] = useState("");
   const [label, setLabel] = useState("");
-  const [query, setQuery] = useState("");
+  const [criteria, setCriteria] = useState<SearchCriteria>({ area: "", country: "", funding: "", programme: "", deadline: "" });
   const [job, setJob] = useState<Job | null>(null);
 
   useEffect(() => {
@@ -285,11 +319,40 @@ function Crawler() {
           <button className="btn-primary" disabled={!seeds.data?.items.some((s) => s.enabled) || job?.status === "RUNNING"} onClick={() => run({})}>
             <Radar size={15} /> Run discovery now
           </button>
-          {status.data?.search.enabled && (
-            <form className="flex flex-1 gap-2" onSubmit={(e) => { e.preventDefault(); run({ query }); }}>
-              <input className="input" placeholder="Search API query, e.g. fully funded PhD NLP" value={query} onChange={(e) => setQuery(e.target.value)} />
-              <button className="btn-secondary" disabled={!query}>Search</button>
+          {status.data?.search.enabled ? (
+            <form className="basis-full space-y-2 rounded-lg border border-slate-200 bg-white p-3" onSubmit={(e) => { e.preventDefault(); run({ query: buildSearchQuery(criteria) }); }}>
+              <p className="text-sm font-medium">Find opportunities for me</p>
+              <p className="text-xs text-slate-500">Tell us what you want; the app searches the web and checks official sources before saving results.</p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                <input className="input" placeholder="Research area" value={criteria.area} onChange={(e) => setCriteria({ ...criteria, area: e.target.value })} />
+                <input className="input" placeholder="Country or region" value={criteria.country} onChange={(e) => setCriteria({ ...criteria, country: e.target.value })} />
+                <select className="input" value={criteria.funding} onChange={(e) => setCriteria({ ...criteria, funding: e.target.value })}>
+                  <option value="">Any funding</option>
+                  <option value="fully funded">Fully funded</option>
+                  <option value="funded studentship">Funded studentship</option>
+                  <option value="paid PhD position">Paid position</option>
+                </select>
+                <select className="input" value={criteria.programme} onChange={(e) => setCriteria({ ...criteria, programme: e.target.value })}>
+                  <option value="">Any programme</option>
+                  <option value="PhD position">PhD position</option>
+                  <option value="PhD scholarship">PhD scholarship</option>
+                  <option value="doctoral programme">Doctoral programme</option>
+                </select>
+                <select className="input" value={criteria.deadline} onChange={(e) => setCriteria({ ...criteria, deadline: e.target.value })}>
+                  <option value="">Any deadline</option>
+                  <option value="2026 deadline">2026 deadline</option>
+                  <option value="2027 deadline">2027 deadline</option>
+                  <option value="open now">Open now</option>
+                </select>
+              </div>
+              <button className="btn-primary" disabled={!criteria.area.trim() && !criteria.country.trim() && !criteria.funding && !criteria.programme && !criteria.deadline}>
+                <Search size={15} /> Find matching opportunities
+              </button>
             </form>
+          ) : (
+            <Alert tone="blue" title="Automatic search is not configured">
+              Add a Brave Search API key as <code>SEARCH_PROVIDER=brave</code> and <code>BRAVE_API_KEY</code> in <code>server/.env</code>, then restart the server. Until then, you can use the extension on any page you open or add an official university jobs page below.
+            </Alert>
           )}
         </div>
         {job && (
@@ -297,10 +360,31 @@ function Crawler() {
             <p className="flex items-center gap-2 font-medium">
               {job.status === "RUNNING" && <Loader2 size={14} className="animate-spin" />} Job {job.status.toLowerCase()} — {job.pagesFetched} pages fetched, {job.candidates} candidates
             </p>
+            {job.found.length > 0 && <p className="mt-3 text-xs font-medium text-slate-700">Review results: remove anything irrelevant, then open a result for full requirements.</p>}
             {job.found.map((f) => (
-              <p key={f.id} className="text-xs">
-                <Link className="text-brand-600 hover:underline" to={`/opportunities/${f.id}`}>{f.title}</Link> {f.isNew ? <Badge tone="green">NEW</Badge> : <Badge>already tracked</Badge>} <Badge tone="blue">alignment {f.alignment}</Badge>
-              </p>
+              <div key={f.id} className="mt-2 rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <Link className="font-medium text-brand-600 hover:underline" to={`/opportunities/${f.id}`}>{f.title}</Link>
+                    <p className="text-slate-500">{f.university ?? "University unknown"} · {f.country ?? "Country unknown"}</p>
+                  </div>
+                  <button className="btn-ghost" onClick={async () => { await api.del(`/opportunities/${f.id}`); setJob({ ...job, found: job.found.filter((x) => x.id !== f.id) }); }} aria-label={`Remove ${f.title}`}>Remove</button>
+                </div>
+                <div className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                  <span><b>Funding:</b> {f.funding.replace(/_/g, " ")}</span>
+                  <span><b>Deadline:</b> {f.deadline}</span>
+                  <span><b>Fee:</b> {f.fee.replace(/_/g, " ")}</span>
+                  <span><b>Required documents:</b> {f.documents || "UNKNOWN"}</span>
+                  <span className="sm:col-span-2"><b>English:</b> {f.english}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Badge tone={f.alignment === "HIGH" ? "green" : f.alignment === "MEDIUM" ? "blue" : "slate"}>alignment {f.alignment}</Badge>
+                  {f.isNew && <Badge tone="green">NEW</Badge>}
+                  <a className="text-brand-600 hover:underline" href={f.url} target="_blank" rel="noreferrer">Official source</a>
+                  {f.applyUrl && <a className="text-brand-600 hover:underline" href={f.applyUrl} target="_blank" rel="noreferrer">Application link</a>}
+                  <Link className="text-brand-600 hover:underline" to={`/opportunities/${f.id}`}>Analyze requirements</Link>
+                </div>
+              </div>
             ))}
             {job.leads.map((l) => (
               <p key={l.url} className="text-xs text-amber-800">Lead: <a className="underline" href={l.url} target="_blank" rel="noreferrer">{l.title || l.url}</a> — {l.reason}</p>

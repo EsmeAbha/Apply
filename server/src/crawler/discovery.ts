@@ -17,7 +17,21 @@ export interface DiscoveryJob {
   finishedAt?: string;
   pagesFetched: number;
   candidates: number;
-  found: { id: string; title: string; url: string; isNew: boolean; alignment: string }[];
+  found: {
+    id: string;
+    title: string;
+    url: string;
+    isNew: boolean;
+    alignment: string;
+    university: string | null;
+    country: string | null;
+    funding: string;
+    deadline: string;
+    fee: string;
+    english: string;
+    documents: number;
+    applyUrl: string | null;
+  }[];
   leads: { url: string; title: string; reason: string }[];
   errors: { url: string; reason: string }[];
 }
@@ -139,7 +153,21 @@ async function runDiscovery(job: DiscoveryJob, opts: { seedIds?: string[]; urls?
     if (!ex.isLikelyOpportunity) continue;
     const saved = await saveOpportunity(job.userId, ex, { saved: false, discoveredVia: opts.query ? "SEARCH" : "CRAWLER" });
     const m = matchAnalysis(bundle, ex);
-    job.found.push({ id: saved.opportunity.id, title: saved.opportunity.title, url: c.url, isNew: saved.created, alignment: m.researchAlignment.level });
+    job.found.push({
+      id: saved.opportunity.id,
+      title: saved.opportunity.title,
+      url: c.url,
+      isNew: saved.created,
+      alignment: m.researchAlignment.level,
+      university: ex.university.value,
+      country: ex.country.value,
+      funding: ex.funding.category.value ?? "FUNDING_UNKNOWN",
+      deadline: ex.deadlines.find((d) => d.kind === "APPLICATION")?.dateText ?? "UNKNOWN",
+      fee: ex.fee.status.value ?? "UNKNOWN",
+      english: ex.english.summary,
+      documents: ex.documents.filter((d) => d.necessity === "REQUIRED").length,
+      applyUrl: ex.applyUrl.value,
+    });
     if (saved.created && (m.researchAlignment.level === "HIGH" || m.researchAlignment.level === "MEDIUM") && ex.positionStatus.value !== "CLOSED") {
       await notify(job.userId, {
         opportunityId: saved.opportunity.id,

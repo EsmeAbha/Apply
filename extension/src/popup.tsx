@@ -80,6 +80,8 @@ function Result({ a, onSave, settings }: { a: Analysis; onSave: () => void; sett
 function Main({ settings, onLogout }: { settings: Settings; onLogout: () => void }) {
   const [tab, setTab] = useState<chrome.tabs.Tab | null>(null);
   const [manual, setManual] = useState("");
+  const [country, setCountry] = useState("");
+  const [area, setArea] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -120,6 +122,41 @@ function Main({ settings, onLogout }: { settings: Settings; onLogout: () => void
     });
   };
 
+  const searchFree = () => {
+    const query = ["PhD", "doctoral", area.trim(), country.trim(), "fully funded university position"].filter(Boolean).join(" ");
+    chrome.tabs.create({ url: `https://www.google.com/search?q=${encodeURIComponent(query)}` });
+  };
+
+  const collectSearchResults = (openNext = false) =>
+    run("Collecting search results…", async () => {
+      if (!tab?.id || !tab.url || !/^https:\/\/(www\.)?google\./i.test(tab.url)) throw new Error("Open a Google results page first.");
+      const [res] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const seen = new Set<string>();
+          const links = [...document.querySelectorAll<HTMLAnchorElement>("a[href]")]
+            .map((a) => ({ url: a.href, title: (a.innerText || a.getAttribute("aria-label") || "").trim() }))
+            .filter((x) => /^https?:\/\//i.test(x.url) && !/google\./i.test(new URL(x.url).hostname) && x.title.length > 0)
+            .filter((x) => { const key = new URL(x.url).toString(); if (seen.has(key)) return false; seen.add(key); return true; })
+            .slice(0, 20);
+          const next = [...document.querySelectorAll<HTMLAnchorElement>("a[href]")]
+            .find((a) => /^(next|more results)$/i.test(a.getAttribute("aria-label") ?? a.textContent?.trim() ?? ""))?.href ?? null;
+          return { links, next };
+        },
+      });
+      const result = res?.result as { links: { url: string; title: string }[]; next: string | null } | undefined;
+      const links = result?.links ?? [];
+      if (!links.length) throw new Error("No external results found on this page.");
+      await apiCall<{ job: { id: string } }>("/crawl", { body: { urls: links.map((x) => x.url), maxPerSeed: 1 } });
+      if (openNext && result?.next) {
+        await chrome.tabs.update(tab.id!, { url: result.next });
+        setInfo(`Sent ${links.length} results. The next Google results page is opening; reopen the extension there.`);
+      } else {
+        setInfo(`Sent ${links.length} search results for analysis. Open the dashboard and review the discovered opportunities.`);
+        chrome.tabs.create({ url: `${settings.serverUrl}/discover` });
+      }
+    });
+
   const save = () =>
     run("Saving…", async () => {
       if (!lastInput) return;
@@ -148,6 +185,19 @@ function Main({ settings, onLogout }: { settings: Settings; onLogout: () => void
         <input className="grow" type="url" placeholder="…or paste an official URL" value={manual} onChange={(e) => setManual(e.target.value)} required />
         <button disabled={!!busy}>Go</button>
       </form>
+      <section className="free-search">
+        <b>Free discovery</b>
+        <p className="muted">Search Google by country, then collect the result links for analysis. No paid search API.</p>
+        <div className="row">
+          <input className="grow" placeholder="Country" value={country} onChange={(e) => setCountry(e.target.value)} />
+          <input className="grow" placeholder="Subject (optional)" value={area} onChange={(e) => setArea(e.target.value)} />
+        </div>
+        <div className="row">
+          <button className="primary grow" disabled={!country.trim() || !!busy} onClick={searchFree}>Search Google</button>
+          <button className="grow" disabled={!!busy} onClick={() => collectSearchResults(false)}>Collect this page</button>
+          <button className="grow" disabled={!!busy} onClick={() => collectSearchResults(true)}>Collect + next page</button>
+        </div>
+      </section>
       {busy && <p className="muted">{busy}</p>}
       {err && <p className="err">{err}</p>}
       {info && <p className="ok">{info}</p>}

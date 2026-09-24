@@ -9,5 +9,6 @@
   "background": { "service_worker": "background.js", "type": "module" },
   "options_page": "options.html",
   "permissions": ["activeTab", "scripting", "storage", "alarms", "notifications"],
+   "host_permissions": ["http://localhost:4000/*", "http://127.0.0.1:4000/*"],
   "minimum_chrome_version": "114"
 }
