@@ -278,6 +278,28 @@ opportunitiesRouter.get(
 );
 
 opportunitiesRouter.get(
+  "/deadlines.ics",
+  ah(async (req, res) => {
+    const rows = await prisma.deadline.findMany({
+      where: { opportunity: { userId: uid(req), archived: false, OR: [{ saved: true }, { applications: { some: {} } }] }, kind: { notIn: ["START_DATE", "OTHER"] }, date: { not: null } },
+      include: { opportunity: { select: { title: true, universityName: true, officialUrl: true } } },
+      orderBy: { date: "asc" },
+    });
+    const escape = (value: string) => value.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+    const stamp = (date: Date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+    const body = rows.map((d) => {
+      const title = `${d.kind} deadline — ${d.opportunity.universityName ?? d.opportunity.title}`;
+      return ["BEGIN:VEVENT", `UID:${d.id}@phd-assistant`, `DTSTAMP:${stamp(new Date())}`, `DTSTART;VALUE=DATE:${d.date!.toISOString().slice(0, 10).replace(/-/g, "")}`, `SUMMARY:${escape(title)}`, `DESCRIPTION:${escape(`${d.opportunity.title}\\n${d.dateText}\\n${d.opportunity.officialUrl}`)}`, `URL:${d.opportunity.officialUrl}`, "END:VEVENT"].join("\r\n");
+    });
+    const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//PhD Assistant//Deadlines//EN", "CALSCALE:GREGORIAN", ...body, "END:VCALENDAR"].join("\r\n") + "\r\n";
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="phd-deadlines.ics"');
+    res.setHeader("Cache-Control", "no-store");
+    res.send(ics);
+  }),
+);
+
+opportunitiesRouter.get(
   "/requirements",
   ah(async (req, res) => {
     const { opportunityId } = z.object({ opportunityId: z.string() }).parse(req.query);

@@ -129,6 +129,7 @@ export function AnswerPanel({ ex, match }: { ex: Extraction; match?: MatchAnalys
   const appDeadlines = ex.deadlines.filter((d) => d.kind === "APPLICATION");
   const fundingDeadlines = ex.deadlines.filter((d) => d.kind === "FUNDING" || d.kind === "SCHOLARSHIP");
   const otherDeadlines = ex.deadlines.filter((d) => !["APPLICATION", "FUNDING", "SCHOLARSHIP", "OTHER"].includes(d.kind));
+  const publicationRequirements = ex.documents.filter((d) => ["PUBLICATIONS", "WRITING_SAMPLE", "MASTER_THESIS"].includes(d.key));
   const fee = ex.fee;
   return (
     <div className="grid gap-3 lg:grid-cols-2">
@@ -242,6 +243,28 @@ export function AnswerPanel({ ex, match }: { ex: Extraction; match?: MatchAnalys
         ) : (
           <p className="text-sm text-slate-500">UNKNOWN — no document list found on this page.</p>
         )}
+      </Q>
+      <Q q="PUBLICATIONS / PAPERS?">
+        {publicationRequirements.length ? (
+          <ul className="space-y-2 text-sm">
+            {publicationRequirements.map((d) => (
+              <li key={d.key}>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className={d.necessity === "NOT_REQUIRED" ? "text-slate-400 line-through" : "font-medium"}>{d.label}</span>
+                  <Badge tone={d.necessity === "REQUIRED" ? "blue" : d.necessity === "OPTIONAL" ? "slate" : d.necessity === "NOT_REQUIRED" ? "slate" : "amber"}>{upper(d.necessity)}</Badge>
+                  {d.format && <span className="text-xs text-slate-500">{d.format}</span>}
+                  {d.maxPages && <span className="text-xs text-slate-500">max {d.maxPages} pages</span>}
+                  {d.maxWords && <span className="text-xs text-slate-500">max {d.maxWords} words</span>}
+                  <EvidenceButton evidence={d.evidence} certainty={d.certainty} />
+                </div>
+                {d.instructions && <p className="mt-0.5 text-xs text-slate-600">Source wording: “{d.instructions}”</p>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-slate-500">No publication or writing-sample requirement was found on this page. That does not prove publications are not considered; check the official admissions page.</p>
+        )}
+        <p className="mt-2 text-xs text-slate-500">This section describes what the university asks you to submit. It does not assume that you must already have published papers.</p>
       </Q>
       <Q q="SOURCE?">
         <div className="flex flex-wrap items-center gap-1.5">

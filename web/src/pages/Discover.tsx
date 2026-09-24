@@ -1,10 +1,10 @@
 import { ExternalLink, Globe, Loader2, Plus, Radar, Save, Search, Trash2 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AnswerPanel, OpportunityCard } from "../components/opportunity";
 import { Alert, Badge, Empty, Section, Spinner, toast, useLoad } from "../components/ui";
 import { api } from "../lib/api";
-import { fmtDateTime } from "../lib/format";
+import { fmtDateTime, human } from "../lib/format";
 import type { Extraction, MatchAnalysis, OpportunitySummary } from "../lib/types";
 
 interface AnalyzeResponse { ok: boolean; extraction: Extraction; existingId: string | null; match: MatchAnalysis; ai?: { accepted: string[]; rejected: string[] } }
@@ -119,6 +119,7 @@ function Browser() {
   const [params, setParams] = useSearchParams();
   const qs = FILTER_KEYS.filter((k) => params.get(k)).map((k) => `${k}=${encodeURIComponent(params.get(k)!)}`).join("&");
   const { data, loading, reload } = useLoad(() => api.get<{ items: OpportunitySummary[] }>(`/opportunities?${qs}`), [qs]);
+  const [compare, setCompare] = useState<string[]>([]);
   const set = (k: string, v: string | boolean) => {
     const next = new URLSearchParams(params);
     if (v === "" || v === false) next.delete(k);
@@ -127,6 +128,7 @@ function Browser() {
   };
   const val = (k: string) => params.get(k) ?? "";
   const check = (k: string) => params.get(k) === "true";
+  const selected = (id: string) => compare.includes(id);
 
   return (
     <Section title="Opportunities" actions={<span className="text-xs text-slate-500">{data?.items.length ?? 0} shown · no ranking of universities — filters only</span>}>
@@ -203,14 +205,29 @@ function Browser() {
       ) : !data?.items.length ? (
         <Empty title="No opportunities match">Analyse an official page above, use the extension, or run discovery below.</Empty>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {data.items.map((o) => (
-            <OpportunityCard key={o.id} o={o} onChange={reload} />
-          ))}
-        </div>
+        <>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+            <span>Select up to four opportunities to compare requirements side by side.</span>
+            {compare.length > 0 && <button className="text-brand-600 hover:underline" onClick={() => setCompare([])}>Clear comparison</button>}
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {data.items.map((o) => (
+              <div key={o.id}>
+                <label className="mb-1 flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={selected(o.id)} disabled={!selected(o.id) && compare.length >= 4} onChange={(e) => setCompare(e.target.checked ? [...compare, o.id] : compare.filter((id) => id !== o.id))} /> Compare</label>
+                <OpportunityCard o={o} onChange={reload} />
+              </div>
+            ))}
+          </div>
+          {compare.length >= 2 && <Comparison items={data.items.filter((o) => compare.includes(o.id))} />}
+        </>
       )}
     </Section>
   );
+}
+
+function Comparison({ items }: { items: OpportunitySummary[] }) {
+  const row = (label: string, value: (item: OpportunitySummary) => ReactNode) => <tr><th className="p-2 text-left text-xs font-medium text-slate-500">{label}</th>{items.map((o) => <td key={o.id} className="min-w-44 p-2 text-xs align-top">{value(o)}</td>)}</tr>;
+  return <div className="mt-5 overflow-x-auto rounded-lg border border-slate-200"><table className="w-full border-collapse bg-white"><thead><tr><th className="p-2 text-left text-xs font-medium text-slate-500">Compare</th>{items.map((o) => <th key={o.id} className="min-w-44 p-2 text-left text-sm">{o.title}<div className="text-xs font-normal text-slate-500">{o.universityName ?? "University unknown"}</div></th>)}</tr></thead><tbody className="divide-y divide-slate-100">{row("Country", (o) => o.country ?? "UNKNOWN")}{row("Funding", (o) => human(o.fundingCategory))}{row("Tuition", (o) => human(o.tuition))}{row("Stipend / salary", (o) => o.stipend ?? o.salary ?? "UNKNOWN")}{row("Application fee", (o) => o.feeStatus === "FREE" ? "FREE" : o.feeAmount ? `${o.feeCurrency ?? ""} ${o.feeAmount}` : human(o.feeStatus))}{row("English", (o) => `${human(o.englishStatus)}${o.englishSummary ? ` — ${o.englishSummary}` : ""}`)}{row("Deadline", (o) => o.primaryDeadline ? fmtDateTime(o.primaryDeadline) : o.rolling ? "Rolling" : "UNKNOWN")}{row("Documents", (o) => o.requiredDocuments.length ? o.requiredDocuments.map((d) => d.label).join(", ") : "UNKNOWN")}{row("Source", (o) => <a className="text-brand-600 hover:underline" href={o.officialUrl} target="_blank" rel="noreferrer">Official page</a>)}</tbody></table></div>;
 }
 
 interface Seed { id: string; url: string; label: string | null; enabled: boolean; lastCrawledAt: string | null; lastStatus: string | null }

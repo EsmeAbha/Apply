@@ -201,7 +201,7 @@ No test depends on live websites.
 3. Headless-browser fetching for JavaScript-rendered official portals (still respecting robots.txt and terms).
 4. Background job queue (BullMQ), PostgreSQL, httpOnly cookie auth, per-user rate limits.
 5. More languages for extraction (German, Dutch, Swedish, French keywords).
-6. Calendar export (ICS) and push notifications.
+6. Push notifications (deadline reminders already support in-app and browser notifications; calendar export is available from the Deadlines page).
 7. Citation-grounded AI extraction (document citations) for long pages; an evaluation set built from real, verified pages.
 8. Firefox packaging (MV3 is largely compatible).
 

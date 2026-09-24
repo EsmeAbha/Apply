@@ -1,8 +1,8 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Badge, CertaintyBadge, Empty, Section, Spinner, UrgencyBadge, useLoad } from "../components/ui";
-import { api } from "../lib/api";
+import { Badge, CertaintyBadge, Empty, Section, Spinner, toast, UrgencyBadge, useLoad } from "../components/ui";
+import { api, download } from "../lib/api";
 import { daysLabel, fmtDate, upper } from "../lib/format";
 import type { DeadlineRow, Urgency } from "../lib/types";
 
@@ -49,7 +49,7 @@ export default function Deadlines() {
   return (
     <div className="space-y-5">
       <div>
-        <h1>Deadlines</h1>
+        <div className="flex flex-wrap items-center justify-between gap-2"><h1>Deadlines</h1><button className="btn-secondary" onClick={() => download("/deadlines.ics", "phd-deadlines.ics").catch((e) => toast(e.message, "err"))}><Download size={14} /> Export calendar</button></div>
         <p className="text-sm text-slate-500">
           Application, funding, scholarship and supervisor-contact deadlines are tracked separately. Days are counted in your timezone ({data?.timezone}).
         </p>
