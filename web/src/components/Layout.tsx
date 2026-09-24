@@ -1,4 +1,4 @@
-import { Bell, BookmarkCheck, CalendarClock, CheckSquare, FileStack, FlaskConical, GraduationCap, KanbanSquare, LayoutDashboard, LogOut, Search, Settings, UserRound } from "lucide-react";
+import { Bell, BookmarkCheck, CalendarClock, CheckSquare, FileStack, FlaskConical, GraduationCap, KanbanSquare, LayoutDashboard, LogOut, Search, Settings, UserRound, WandSparkles } from "lucide-react";
 import { UsersRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
@@ -15,7 +15,8 @@ const NAV = [
   { to: "/profile", label: "Profile", icon: UserRound },
   { to: "/research", label: "Research", icon: FlaskConical },
   { to: "/tasks", label: "Tasks", icon: CheckSquare },
-    { to: "/references", label: "References", icon: UsersRound },
+  { to: "/references", label: "References", icon: UsersRound },
+  { to: "/form-memory", label: "Form memory", icon: WandSparkles },
   { to: "/notifications", label: "Notifications", icon: Bell },
   { to: "/settings", label: "Settings", icon: Settings },
 ];

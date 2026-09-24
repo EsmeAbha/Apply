@@ -10,6 +10,7 @@ import Deadlines from "./pages/Deadlines";
 import Discover from "./pages/Discover";
 import Documents from "./pages/Documents";
 import FinalReview from "./pages/FinalReview";
+import FormMemory from "./pages/FormMemory";
 import GeneratedDoc from "./pages/GeneratedDoc";
 import InterviewPrep from "./pages/InterviewPrep";
 import Login from "./pages/Login";
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="applications/:id/interview" element={<InterviewPrep />} />
           <Route path="deadlines" element={<Deadlines />} />
           <Route path="documents" element={<Documents />} />
+          <Route path="form-memory" element={<FormMemory />} />
           <Route path="profile" element={<ProfilePage />} />
                     <Route path="references" element={<References />} />
           <Route path="research" element={<Research />} />

@@ -259,6 +259,11 @@ workspaceRouter.post("/form-answers", ah(async (req, res) => {
   if (b.applicationId && !(await prisma.application.findFirst({ where: { id: b.applicationId, userId: uid(req) } }))) throw new HttpError(404, "Application not found");
   res.status(201).json({ item: await prisma.applicationFormAnswer.upsert({ where: { userId_siteKey_fieldKey: { userId: uid(req), siteKey: b.siteKey, fieldKey: b.fieldKey } }, update: b, create: { ...b, userId: uid(req) } }) });
 }));
+workspaceRouter.delete("/form-answers/:id", ah(async (req, res) => {
+  const result = await prisma.applicationFormAnswer.deleteMany({ where: { id: String(req.params.id), userId: uid(req) } });
+  if (!result.count) throw new HttpError(404, "Saved form answer not found");
+  res.json({ ok: true });
+}));
 
 // ───────────── Tasks ─────────────
 workspaceRouter.get(
