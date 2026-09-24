@@ -62,7 +62,7 @@ export default function Applications() {
                       <div className="mt-2 flex flex-wrap gap-1">
                         <UrgencyBadge urgency={a.opportunity.urgency}>{daysLabel(a.opportunity.daysRemaining)}</UrgencyBadge>
                         <Badge tone={a.documentsReady === a.documentsRequired && a.documentsRequired > 0 ? "green" : "slate"}>Docs {a.documentsReady}/{a.documentsRequired}</Badge>
-                        {a.decision && <Badge tone={a.decision === "ACCEPTED" ? "green" : a.decision === "REJECTED" ? "red" : "amber"}>{a.decision}</Badge>}
+                        {a.decision && <Badge tone={a.decision === "OFFER" || a.decision === "ACCEPTED" ? "green" : a.decision === "REJECTED" ? "red" : "amber"}>{a.decision}</Badge>}
                       </div>
                       <select className="mt-2 w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-xs" value={a.stage} onChange={(e) => move(a.id, e.target.value)} aria-label="Move to stage">
                         {data.stages.map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}

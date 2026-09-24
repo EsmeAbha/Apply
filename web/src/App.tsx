@@ -11,10 +11,12 @@ import Discover from "./pages/Discover";
 import Documents from "./pages/Documents";
 import FinalReview from "./pages/FinalReview";
 import GeneratedDoc from "./pages/GeneratedDoc";
+import InterviewPrep from "./pages/InterviewPrep";
 import Login from "./pages/Login";
 import Notifications from "./pages/Notifications";
 import OpportunityDetail from "./pages/OpportunityDetail";
 import ProfilePage from "./pages/Profile";
+import References from "./pages/References";
 import Research from "./pages/Research";
 import Settings from "./pages/Settings";
 import Shortlist from "./pages/Shortlist";
@@ -46,9 +48,11 @@ export default function App() {
           <Route path="applications" element={<Applications />} />
           <Route path="applications/:id" element={<ApplicationDetail />} />
           <Route path="applications/:id/review" element={<FinalReview />} />
+          <Route path="applications/:id/interview" element={<InterviewPrep />} />
           <Route path="deadlines" element={<Deadlines />} />
           <Route path="documents" element={<Documents />} />
           <Route path="profile" element={<ProfilePage />} />
+                    <Route path="references" element={<References />} />
           <Route path="research" element={<Research />} />
           <Route path="generated/:id" element={<GeneratedDoc />} />
           <Route path="tasks" element={<Tasks />} />

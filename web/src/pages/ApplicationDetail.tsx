@@ -61,6 +61,7 @@ export default function ApplicationDetail() {
           </select>
           <button className="btn-secondary" onClick={() => download(`/applications/${a.id}/package`, "package.zip").catch((e) => toast(e.message, "err"))}><Download size={14} /> Download package</button>
           <button className={data.checklist.readyForFinalReview ? "btn-primary" : "btn-secondary"} onClick={() => nav(`/applications/${a.id}/review`)}><ClipboardCheck size={14} /> Final review</button>
+                  <button className="btn-secondary" onClick={() => nav(`/applications/${a.id}/interview`)}>Interview prep</button>
         </div>
       </div>
 
@@ -168,7 +169,7 @@ export default function ApplicationDetail() {
           <p className="mt-2 text-xs text-slate-500">{data.match.disclaimer}</p>
           {a.submittedAt && <Alert tone="green" title="Submitted (confirmed by you)">{fmtDate(a.submittedAt)} {a.submissionConfirmation && `· reference ${a.submissionConfirmation}`}</Alert>}
           <div className="mt-3 flex flex-wrap gap-2">
-            {(["ACCEPTED", "REJECTED", "WAITLISTED", "WITHDRAWN"] as const).map((d) => (
+            {(["OFFER", "ACCEPTED", "REJECTED", "WAITLISTED", "WITHDRAWN"] as const).map((d) => (
               <button key={d} className={a.decision === d ? "btn-primary" : "btn-ghost"} onClick={async () => { await api.patch(`/applications/${a.id}`, { decision: d }); reload(); }}>{human(d)}</button>
             ))}
           </div>

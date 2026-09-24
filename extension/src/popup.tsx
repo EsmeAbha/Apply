@@ -169,6 +169,11 @@ function Main({ settings, onLogout }: { settings: Settings; onLogout: () => void
     run("Scanning form…", async () => {
       if (!tab?.id) throw new Error("No active tab");
       const { values } = await apiCall<{ values: Record<string, string | null> }>("/profile/form-values");
+      const siteKey = tab.url ? new URL(tab.url).hostname : "";
+      if (siteKey) {
+        const memory = await apiCall<{ items: { fieldKey: string; value: string }[] }>(`/form-answers?siteKey=${encodeURIComponent(siteKey)}`);
+        for (const answer of memory.items) values[answer.fieldKey] = answer.value;
+      }
       await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["formAssist.js"] });
       await chrome.tabs.sendMessage(tab.id, { type: "PHD_FORM_ASSIST", values });
       setInfo("Form review panel opened on the page. Sensitive fields are highlighted red and never filled.");

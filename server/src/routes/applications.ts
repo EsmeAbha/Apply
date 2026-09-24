@@ -95,7 +95,7 @@ applicationsRouter.patch(
   ah(async (req, res) => {
     const userId = uid(req);
     const body = z
-      .object({ stage: z.enum(STAGES).optional(), decision: z.enum(["ACCEPTED", "REJECTED", "WAITLISTED", "WITHDRAWN"]).optional(), notes: z.string().max(10_000).optional(), portalUrl: z.string().url().or(z.literal("")).optional(), portalUsername: z.string().max(200).optional() })
+      .object({ stage: z.enum(STAGES).optional(), decision: z.enum(["ACCEPTED", "OFFER", "REJECTED", "WAITLISTED", "WITHDRAWN"]).optional(), notes: z.string().max(10_000).optional(), portalUrl: z.string().url().or(z.literal("")).optional(), portalUsername: z.string().max(200).optional() })
       .parse(req.body);
     await loadApp(userId, String(req.params.id));
     if (body.stage) await setStage(userId, String(req.params.id), body.stage as Stage, body.decision);

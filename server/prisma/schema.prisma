@@ -31,6 +31,8 @@ model User {
   tasks             Task[]
   notifications     Notification[]
   seeds             DiscoverySeed[]
+  referenceRequests ReferenceRequest[]
+  formAnswers       ApplicationFormAnswer[]
 }
 
 model Session {
@@ -387,6 +389,9 @@ model Application {
   documents          ApplicationDocument[]
   generated          GeneratedDocument[]
   tasks              Task[]
+  referenceRequests  ReferenceRequest[]
+  interviewPrep      InterviewPrep?
+  formAnswers        ApplicationFormAnswer[]
 
   @@unique([userId, opportunityId])
 }
@@ -407,6 +412,53 @@ model ApplicationDocument {
   documentVersion     DocumentVersion? @relation(fields: [documentVersionId], references: [id], onDelete: SetNull)
 
   @@unique([applicationId, requirementKey])
+}
+
+model ReferenceRequest {
+  id            String       @id @default(cuid())
+  userId        String
+  applicationId String?
+  name          String
+  email         String?
+  institution   String?
+  relationship  String?
+  status        String       @default("NOT_REQUESTED") // NOT_REQUESTED | REQUESTED | REMINDED | RECEIVED | DECLINED
+  requestedAt   DateTime?
+  deadline      DateTime?
+  receivedAt    DateTime?
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+model InterviewPrep {
+  id            String      @id @default(cuid())
+  applicationId String      @unique
+  questions     Json        @default("[]")
+  notes         String?
+  updatedAt     DateTime    @updatedAt
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+model ApplicationFormAnswer {
+  id            String       @id @default(cuid())
+  userId        String
+  applicationId String?
+  siteKey       String
+  fieldKey      String
+  label         String
+  value         String
+  approved      Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, siteKey, fieldKey])
 }
 
 model GeneratedDocument {

@@ -1,4 +1,6 @@
 import { Router } from "express";
+import PDFDocument from "pdfkit";
+import { Document as DocxDocument, Packer, Paragraph, TextRun } from "docx";
 import { z } from "zod";
 import { aiStatus } from "../ai/provider.js";
 import { uid } from "../auth/middleware.js";
@@ -61,6 +63,31 @@ workspaceRouter.get(
     res.json({ generated: g, comparison: g.baseContent ? compareWithMaster(g.baseContent, g.content) : null });
   }),
 );
+
+workspaceRouter.get("/generated/:id/export", ah(async (req, res) => {
+  const format = z.object({ format: z.enum(["pdf", "docx"]) }).parse(req.query).format;
+  const g = await prisma.generatedDocument.findFirst({ where: { id: String(req.params.id), userId: uid(req) } });
+  if (!g) throw new HttpError(404, "Draft not found");
+  const filename = g.title.replace(/[^A-Za-z0-9]+/g, "_").slice(0, 80);
+  if (format === "docx") {
+    const doc = new DocxDocument({ sections: [{ properties: {}, children: g.content.split(/\r?\n/).map((line) => new Paragraph({ children: [new TextRun(line)] })) }] });
+    const buffer = await Packer.toBuffer(doc);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}.docx"`);
+    res.send(buffer);
+    return;
+  }
+  const chunks: Buffer[] = [];
+  const pdf = new PDFDocument({ margin: 54 });
+  pdf.on("data", (chunk: Buffer) => chunks.push(chunk));
+  pdf.on("end", () => {
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}.pdf"`);
+    res.send(Buffer.concat(chunks));
+  });
+  pdf.fontSize(11).text(g.content, { lineGap: 4 });
+  pdf.end();
+}));
 
 workspaceRouter.patch(
   "/generated/:id",
@@ -165,6 +192,73 @@ workspaceRouter.delete(
     res.json({ ok: true });
   }),
 );
+
+// ───────────── References, interview preparation & safe form memory ─────────────
+const referenceBody = z.object({
+  applicationId: z.string().nullable().optional(), name: z.string().min(1).max(200), email: z.string().email().nullable().optional(),
+  institution: z.string().max(300).nullable().optional(), relationship: z.string().max(200).nullable().optional(), status: z.enum(["NOT_REQUESTED", "REQUESTED", "REMINDED", "RECEIVED", "DECLINED"]).optional(),
+  requestedAt: z.string().nullable().optional(), deadline: z.string().nullable().optional(), receivedAt: z.string().nullable().optional(), notes: z.string().max(2000).nullable().optional(),
+});
+const referenceDates = (b: Partial<z.infer<typeof referenceBody>>) => ({ ...b, requestedAt: b.requestedAt ? new Date(b.requestedAt) : b.requestedAt === null ? null : undefined, deadline: b.deadline ? new Date(b.deadline) : b.deadline === null ? null : undefined, receivedAt: b.receivedAt ? new Date(b.receivedAt) : b.receivedAt === null ? null : undefined });
+
+workspaceRouter.get("/reference-requests", ah(async (req, res) => {
+  const items = await prisma.referenceRequest.findMany({ where: { userId: uid(req) }, orderBy: [{ status: "asc" }, { deadline: "asc" }], include: { application: { include: { opportunity: { select: { id: true, title: true } } } } } });
+  res.json({ items });
+}));
+workspaceRouter.post("/reference-requests", ah(async (req, res) => {
+  const b = referenceBody.parse(req.body);
+  if (b.applicationId) {
+    const app = await prisma.application.findFirst({ where: { id: b.applicationId, userId: uid(req) } });
+    if (!app) throw new HttpError(404, "Application not found");
+  }
+  res.status(201).json({ item: await prisma.referenceRequest.create({ data: { ...referenceDates(b), name: b.name, userId: uid(req) } }) });
+}));
+workspaceRouter.patch("/reference-requests/:id", ah(async (req, res) => {
+  const r = await prisma.referenceRequest.updateMany({ where: { id: String(req.params.id), userId: uid(req) }, data: referenceDates(referenceBody.partial().parse(req.body)) });
+  if (!r.count) throw new HttpError(404, "Reference request not found");
+  res.json({ ok: true });
+}));
+workspaceRouter.delete("/reference-requests/:id", ah(async (req, res) => {
+  await prisma.referenceRequest.deleteMany({ where: { id: String(req.params.id), userId: uid(req) } });
+  res.json({ ok: true });
+}));
+
+workspaceRouter.get("/applications/:id/interview-prep", ah(async (req, res) => {
+  const app = await prisma.application.findFirst({ where: { id: String(req.params.id), userId: uid(req) }, include: { opportunity: true } });
+  if (!app) throw new HttpError(404, "Application not found");
+  const existing = await prisma.interviewPrep.findUnique({ where: { applicationId: app.id } });
+  res.json({ prep: existing });
+}));
+workspaceRouter.post("/applications/:id/interview-prep/generate", ah(async (req, res) => {
+  const app = await prisma.application.findFirst({ where: { id: String(req.params.id), userId: uid(req) }, include: { opportunity: true } });
+  if (!app) throw new HttpError(404, "Application not found");
+  const ex = app.opportunity.extraction as { title?: { value?: string | null }; university?: { value?: string | null }; researchAreas?: string[]; degreeRequirement?: { value?: string | null }; funding?: { category?: { value?: string | null } }; english?: { summary?: string } };
+  const questions = [
+    { category: "Motivation", question: `Why do you want to pursue this PhD at ${ex.university?.value ?? "this university"}?`, answer: "" },
+    { category: "Research fit", question: `How does your background prepare you for ${ex.title?.value ?? app.opportunity.title}?`, answer: "" },
+    { category: "Research plan", question: `What research question would you explore in ${ex.researchAreas?.join(", ") || "this area"}, and how would you investigate it?`, answer: "" },
+    { category: "Evidence", question: "Describe one project, paper, or research experience that demonstrates your preparation.", answer: "" },
+    { category: "Practical", question: `What do you understand about the funding and English requirements? ${ex.funding?.category?.value ?? "Funding is not confirmed."} / ${ex.english?.summary ?? "English requirements need verification."}`, answer: "" },
+  ];
+  const prep = await prisma.interviewPrep.upsert({ where: { applicationId: app.id }, update: { questions }, create: { applicationId: app.id, questions } });
+  res.json({ prep });
+}));
+workspaceRouter.patch("/applications/:id/interview-prep", ah(async (req, res) => {
+  const app = await prisma.application.findFirst({ where: { id: String(req.params.id), userId: uid(req) } });
+  if (!app) throw new HttpError(404, "Application not found");
+  const b = z.object({ questions: z.array(z.object({ category: z.string(), question: z.string(), answer: z.string().max(10_000) })).max(50), notes: z.string().max(10_000).nullable().optional() }).parse(req.body);
+  res.json({ prep: await prisma.interviewPrep.upsert({ where: { applicationId: app.id }, update: b, create: { applicationId: app.id, ...b } }) });
+}));
+
+workspaceRouter.get("/form-answers", ah(async (req, res) => {
+  const { siteKey } = z.object({ siteKey: z.string().max(300).optional() }).parse(req.query);
+  res.json({ items: await prisma.applicationFormAnswer.findMany({ where: { userId: uid(req), approved: true, ...(siteKey ? { siteKey } : {}) }, orderBy: { updatedAt: "desc" } }) });
+}));
+workspaceRouter.post("/form-answers", ah(async (req, res) => {
+  const b = z.object({ applicationId: z.string().nullable().optional(), siteKey: z.string().min(1).max(300), fieldKey: z.string().min(1).max(300), label: z.string().min(1).max(300), value: z.string().max(5000), approved: z.boolean().default(false) }).parse(req.body);
+  if (b.applicationId && !(await prisma.application.findFirst({ where: { id: b.applicationId, userId: uid(req) } }))) throw new HttpError(404, "Application not found");
+  res.status(201).json({ item: await prisma.applicationFormAnswer.upsert({ where: { userId_siteKey_fieldKey: { userId: uid(req), siteKey: b.siteKey, fieldKey: b.fieldKey } }, update: b, create: { ...b, userId: uid(req) } }) });
+}));
 
 // ───────────── Tasks ─────────────
 workspaceRouter.get(

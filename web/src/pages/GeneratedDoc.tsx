@@ -2,7 +2,7 @@ import { Check, Copy, Download, Save, Vault } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Alert, Badge, Section, Spinner, toast, useLoad } from "../components/ui";
-import { api } from "../lib/api";
+import { api, download } from "../lib/api";
 import { fmtDateTime, human } from "../lib/format";
 import type { Generated } from "../lib/types";
 
@@ -54,6 +54,8 @@ export default function GeneratedDoc() {
         <div className="flex flex-wrap gap-2">
           <button className="btn-secondary" onClick={() => { navigator.clipboard.writeText(content); toast("Copied"); }}><Copy size={14} /> Copy</button>
           <button className="btn-secondary" onClick={txt}><Download size={14} /> .txt</button>
+          <button className="btn-secondary" onClick={() => download(`/generated/${g.id}/export?format=docx`, `${g.title}.docx`).catch((e) => toast(e.message, "err"))}><Download size={14} /> .docx</button>
+          <button className="btn-secondary" onClick={() => download(`/generated/${g.id}/export?format=pdf`, `${g.title}.pdf`).catch((e) => toast(e.message, "err"))}><Download size={14} /> .pdf</button>
           <button className="btn-secondary" onClick={toVault}><Vault size={14} /> Save to vault (new version)</button>
           <button className="btn-secondary" disabled={!dirty} onClick={save}><Save size={14} /> Save edits</button>
           <button className="btn-primary" onClick={approve} disabled={placeholders > 0} title={placeholders ? "Fill all [PLACEHOLDERS] first" : ""}><Check size={14} /> Approve</button>
